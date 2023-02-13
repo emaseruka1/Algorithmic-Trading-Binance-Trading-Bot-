@@ -38,9 +38,9 @@ buy_strike =[20]
 #https://www.plus2net.com/python/pygsheets-append_table.php
 
 
-key= '87LuGjBLzYmCatq5Z6f94THMjAvK9XBrDGKFQTHVczG5uk58m9XiSCl3LEfV1DiC'
+key= '####'
 
-secret= '1vUHCRc1tW0f4amCNXiCK12iHNJdbKIHgqKb2d5ZLWXEJi82hLBSQeGJYxPJ9EXk'
+secret= '####'
 
 client = Client(key,secret)
 
