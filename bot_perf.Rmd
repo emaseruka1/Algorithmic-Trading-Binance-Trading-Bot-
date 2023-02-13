@@ -1,0 +1,156 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+importing libraries
+
+```{r}
+library(binancer)
+library(dplyr)
+library(googlesheets4)
+library(timeDate)
+library(data.table)
+library(RDCOMClient)
+library(ggplot2)
+```
+
+
+
+
+
+```{r}
+
+today<-Sys.Date()
+
+key = '87LuGjBLzYmCatq5Z6f94THMjAvK9XBrDGKFQTHVczG5uk58m9XiSCl3LEfV1DiC'
+
+secret = '1vUHCRc1tW0f4amCNXiCK12iHNJdbKIHgqKb2d5ZLWXEJi82hLBSQeGJYxPJ9EXk'
+
+#Calling API
+
+# load snakecase
+
+binance_ping()
+
+binance_credentials(key, secret)
+
+
+x <- read_sheet("https://docs.google.com/spreadsheets/d/1r18TexWo9TuaA51Gv1O72mBN8aFDGK_a6v-Gr3FxXVs/edit#gid=0", sheet="bot")
+```
+
+Create performance table
+
+```{r}
+
+last_action<-as.numeric(tail(x,1))
+
+if (last_action!=-1) {
+  
+  
+  trades<-binance_all_orders("BTCBUSD")%>%select(c(time,symbol,side,price, executed_qty)) #fetch binance transactions
+  
+  trades<- trades[-1,]
+
+  trades$date_ID<-format(trades$time,"%Y/%m/%d")  #create ID 
+
+  initial_trading_day<-format(trades[1,1],"%Y/%m/%d")    
+
+  perf_df<-binance_klines('BTCBUSD', interval = '1d', start_time = initial_trading_day, end_time = today-1)%>%select(c(close_time,close))  #pull btc data from the first day I traded
+
+  perf_df$date_ID<-format(perf_df$close_time,"%Y/%m/%d") 
+
+  perf_df<-merge(perf_df,trades, by="date_ID", all.x=TRUE)  #merge trades data with btc data
+
+  perf_df<-perf_df%>%mutate(pricing = ifelse(is.na(time),close,price)) #fill my buy and sell prices as prices of BTC for that day
+
+
+  perf_df<-perf_df%>%mutate(benchmark_return = ROC(pricing,type='discrete'))
+
+  perf_df<-perf_df%>%mutate(position = na.locf(perf_df$side)) #a column stating when am in and out of the market
+
+  perf_df<-perf_df%>%mutate(port_ret = ifelse(position=="BUY",benchmark_return ,0))   #calculating returns 
+
+  perf_df[1,'benchmark_return']<-0
+  perf_df[1,'port_ret']<-0
+
+
+  perf_df$port_growth<-cumprod(1+perf_df$port_ret) #calculating portfolio growth
+
+
+  perf_df$benchmark_growth<-cumprod(1+perf_df$benchmark_return) #calculating benchmark growth
+  
+  
+} else print("do nothing")
+
+
+
+```
+
+
+
+Send email (https://mdneuzerling.com/post/using-r-to-send-an-outlook-email-with-an-inline-image/)
+
+```{r}
+
+  # Create a simple scatterplot with ggplo2
+SimplePlot <- plot
+
+# Create a temporary file path for the image that we will attach to our email
+SimplePlot.file <- tempfile(fileext = ".png")
+# Save the ggplot we just created as an image with the temporary file path
+ggsave(plot = SimplePlot, file = SimplePlot.file,
+          device = "png", width = 7, height = 7)
+
+# Create an Outlook object, a new email, and set the parameters.
+Outlook <- RDCOMClient::COMCreate("Outlook.Application")
+Email <- Outlook$CreateItem(0)
+Email[["To"]] <- "emmamaseruka97@gmail.com"
+Email[["subject"]] <- "Portfolio Update"
+# Some text before we insert our plot
+
+# First add the temporary file as an attachment.
+Email[["Attachments"]]$Add(SimplePlot.file)
+# Refer to the attachment with a cid
+# "basename" returns the file name without the directory.
+SimplePlot.inline <- paste0( "<img src='cid:",
+          basename(SimplePlot.file),
+        "' width = '400' height = '400'>")
+
+if (last_action==1){
+  
+
+  Body <- "<p>The robot has just bought bitcoin</p>"
+
+# Put the text and plot together in the body of the email.
+  Email[["HTMLBody"]] <- paste0(Body)
+
+# Either display the email in Outlook or send it straight away.
+# Comment out either line.
+#Email$Display()
+  Email$Send()
+
+# Delete the temporary file used to attach images.
+  unlink(SimplePlot.file)
+ 
+} else if (last_action==0) {
+
+   Body <- "<p>The robot has just sold bitcoin</p>"
+
+# Put the text and plot together in the body of the email.
+  Email[["HTMLBody"]] <- paste0(Body)
+
+# Either display the email in Outlook or send it straight away.
+# Comment out either line.
+#Email$Display()
+  Email$Send()
+
+# Delete the temporary file used to attach images.
+  unlink(SimplePlot.file)
+  
+} else print("do nothing")
+  
+  
+```
+
